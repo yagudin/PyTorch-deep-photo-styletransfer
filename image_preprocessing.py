@@ -7,10 +7,23 @@ import matplotlib.pyplot as plt
 
 
 def tensor_to_image(x):
-    return x.detach().numpy().squeeze().transpose(1, 2, 0).clip(0, 1)
+    """
+    Transforms torch.Tensor to np.array
+        (1, C, W, H) -> (W, H, C)
+        (B, C, W, H) -> (B, W, H, C) 
+
+    """
+    return x.detach().numpy().transpose(0, 2, 3, 1).squeeze().clip(0, 1)
 
 
 def image_to_tensor(x):
+    """
+    Transforms np.array to torch.Tensor
+        (W, H)       -> (1, 1, W, H)
+        (W, H, C)    -> (1, C, W, H)
+        (B, W, H, C) -> (B, C, W, H)
+
+    """
     if x.ndim == 2:
         return torch.Tensor(x).unsqueeze(0).unsqueeze(0)
     if x.ndim == 3:
@@ -21,6 +34,12 @@ def image_to_tensor(x):
 
 
 def extract_masks(segment):
+    """
+    Extracts the segmentation masks from the segmentated image.
+    Allowed colors are:
+        blue, green, black, white, red,
+        yellow, grey, light_blue, purple.
+    """
     extracted_colors = []
 
     # BLUE
@@ -90,16 +109,26 @@ def extract_masks(segment):
 
 
 def get_all_masks(path):
+    """
+    Returns the segmentation masks from the segmentated image.
+    """
     image = Image.open(path)
     np_image = np.array(image, dtype=np.float) / 255
     return extract_masks(np_image)
 
 
 def is_nonzero(mask, thrs=0.01):
+    """
+    Checks segmentation mask is dense.
+    """
     return np.sum(mask) / mask.size > thrs
 
 
 def get_masks(path_style, path_content):
+    """
+    Returns the meaningful segmentation masks.
+    Avoides "orphan semantic labels" problem.
+    """
     masks_style = get_all_masks(path_style)
     masks_content = get_all_masks(path_content)
 
@@ -115,6 +144,9 @@ def get_masks(path_style, path_content):
 
 
 def resize_masks(masks_style, masks_content, size):
+    """
+    Resizes masks to given size.
+    """
     resize_mask = lambda mask: resize(mask, size, mode="reflect")
 
     masks_style = [resize_mask(mask) for mask in masks_style]
@@ -124,6 +156,9 @@ def resize_masks(masks_style, masks_content, size):
 
 
 def masks_to_tensor(masks_style, masks_content):
+    """
+    Transforms masks to torch.Tensor from np.array.
+    """
     masks_style = [image_to_tensor(mask) for mask in masks_style]
     masks_content = [image_to_tensor(mask) for mask in masks_content]
 
@@ -131,6 +166,9 @@ def masks_to_tensor(masks_style, masks_content):
 
 
 def masks_loader(path_style, path_content, size):
+    """
+    Loads masks.
+    """
     style_masks, content_masks = get_masks(path_style, path_content)
     style_masks, content_masks = resize_masks(style_masks, content_masks, size)
     style_masks, content_masks = masks_to_tensor(style_masks, content_masks)
@@ -139,6 +177,9 @@ def masks_loader(path_style, path_content, size):
 
 
 def image_loader(image_name, size):
+    """
+    Loads images.
+    """
     loader = transforms.Compose([transforms.Resize(size), transforms.ToTensor()])
 
     image = Image.open(image_name)
@@ -154,7 +195,9 @@ def plt_images(
     output_title="Output Image",
     content_title="Content Image",
 ):
-
+    """
+    Plots style, output and content images to ease comparison.
+    """
     plt.figure(figsize=(12, 4))
 
     plt.subplot(1, 3, 1)

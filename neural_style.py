@@ -22,6 +22,10 @@ class Normalization(nn.Module):
 
 
 class ContentLoss(nn.Module):
+    """
+    See Gatys et al. for the details.
+    """
+
     def __init__(self, target):
         super(ContentLoss, self).__init__()
         self.target = target.detach()
@@ -40,6 +44,10 @@ def gram_matrix(input):
 
 
 class StyleLoss(nn.Module):
+    """
+    See Gatys et al. for the details.
+    """
+
     def __init__(self, target_feature):
         super(StyleLoss, self).__init__()
         self.target = gram_matrix(target_feature).detach()
@@ -51,6 +59,11 @@ class StyleLoss(nn.Module):
 
 
 class AugmentedStyleLoss(nn.Module):
+    """
+    AugmentedStyleLoss exploits the semantic information of images.
+    See Luan et al. for the details.
+    """
+
     def __init__(self, target_feature, target_masks, input_masks):
         super(AugmentedStyleLoss, self).__init__()
         self.input_masks = [mask.detach() for mask in input_masks]
@@ -102,9 +115,6 @@ def get_style_model_and_losses(
 
         elif isinstance(layer, nn.ReLU):
             name = "relu{}_{}".format(num_pool, num_conv)
-            # The in-place version doesn't play very nicely with the ContentLoss
-            # and StyleLoss we insert below. So we replace with out-of-place
-            # ones here.
             layer = nn.ReLU(inplace=False)
 
         elif isinstance(layer, nn.MaxPool2d):
@@ -117,6 +127,8 @@ def get_style_model_and_losses(
                 padding=layer.padding,
             )
 
+            # Update the segmentation masks to match
+            # the activation matrices of the neural responses.
             style_masks = [layer(mask) for mask in style_masks]
             content_masks = [layer(mask) for mask in content_masks]
 
@@ -143,7 +155,8 @@ def get_style_model_and_losses(
             model.add_module("style_loss_{}".format(num_pool), style_loss)
             style_losses.append(style_loss)
 
-    # now we trim off the layers after the last content and style losses
+    # Trim off the layers after the last content and style losses
+    # to speed up forward pass.
     for i in range(len(model) - 1, -1, -1):
         if isinstance(model[i], (ContentLoss, StyleLoss, AugmentedStyleLoss)):
             break
@@ -178,6 +191,7 @@ def run_style_transfer(
 ):
     """
     Run the style transfer.
+    `reg_weight` is the photorealistic regularization hyperparameter 
     """
     model, style_losses, content_losses = get_style_model_and_losses(
         cnn,
@@ -197,6 +211,10 @@ def run_style_transfer(
         L = compute_laplacian(tensor_to_image(content_img))
 
         def regularization_grad(input_img):
+            """
+            Photorealistic regularization
+            See Luan et al. for the details.
+            """
             im = tensor_to_image(input_img)
             grad = L.dot(im.reshape(-1, 3))
             loss = (grad * im.reshape(-1, 3)).sum()
@@ -221,6 +239,7 @@ def run_style_transfer(
             loss = style_score + content_score
             loss.backward()
 
+            # Add photorealistic regularization
             if reg:
                 reg_loss, reg_grad = regularization_grad(input_img)
                 reg_grad_tensor = image_to_tensor(reg_grad)
