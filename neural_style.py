@@ -22,7 +22,7 @@ class Normalization(nn.Module):
 
 
 class ContentLoss(nn.Module):
-    def __init__(self, target,):
+    def __init__(self, target):
         super(ContentLoss, self).__init__()
         self.target = target.detach()
 
@@ -30,12 +30,14 @@ class ContentLoss(nn.Module):
         self.loss = F.mse_loss(input, self.target)
         return input
 
-def gram_matrix(input):
-        B, C, H, W = input.size()
-        features = input.view(B * C, H * W)
-        gram = torch.mm(features, features.t())
 
-        return gram.div(B * C * H * W)
+def gram_matrix(input):
+    B, C, H, W = input.size()
+    features = input.view(B * C, H * W)
+    gram = torch.mm(features, features.t())
+
+    return gram.div(B * C * H * W)
+
 
 class StyleLoss(nn.Module):
     def __init__(self, target_feature):
@@ -47,30 +49,44 @@ class StyleLoss(nn.Module):
         self.loss = F.mse_loss(gram, self.target)
         return input
 
+
 class AugmentedStyleLoss(nn.Module):
     def __init__(self, target_feature, target_masks, input_masks):
         super(AugmentedStyleLoss, self).__init__()
         self.input_masks = [mask.detach() for mask in input_masks]
-        self.targets = [gram_matrix(target_feature * mask).detach() for mask in target_masks]
+        self.targets = [
+            gram_matrix(target_feature * mask).detach() for mask in target_masks
+        ]
 
     def forward(self, input):
-        gram_matrices = [gram_matrix(input * mask.detach()) for mask in self.input_masks]
-        self.loss = sum(F.mse_loss(gram, target) for gram, target in zip(gram_matrices, self.targets))
+        gram_matrices = [
+            gram_matrix(input * mask.detach()) for mask in self.input_masks
+        ]
+        self.loss = sum(
+            F.mse_loss(gram, target)
+            for gram, target in zip(gram_matrices, self.targets)
+        )
         return input
 
 
-content_layers_default = ['conv4_2']
-style_layers_default = ['conv1_1', 'conv2_1', 'conv3_1', 'conv4_1', 'conv5_1']
+content_layers_default = ["conv4_2"]
+style_layers_default = ["conv1_1", "conv2_1", "conv3_1", "conv4_1", "conv5_1"]
 
 
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
-def get_style_model_and_losses(cnn, normalization_mean, normalization_std,
-                               style_img, content_img,
-                               style_masks, content_masks,
-                               content_layers=content_layers_default,
-                               style_layers=style_layers_default):
+def get_style_model_and_losses(
+    cnn,
+    normalization_mean,
+    normalization_std,
+    style_img,
+    content_img,
+    style_masks,
+    content_masks,
+    content_layers=content_layers_default,
+    style_layers=style_layers_default,
+):
     """
     Assumptions:
         - cnn is a nn.Sequential
@@ -81,17 +97,17 @@ def get_style_model_and_losses(cnn, normalization_mean, normalization_std,
 
     content_losses = []
     style_losses = []
-    
+
     model = nn.Sequential(normalization)
 
     num_pool, num_conv = 0, 0
     for layer in cnn.children():
         if isinstance(layer, nn.Conv2d):
             num_conv += 1
-            name = 'conv{}_{}'.format(num_pool, num_conv)
+            name = "conv{}_{}".format(num_pool, num_conv)
 
         elif isinstance(layer, nn.ReLU):
-            name = 'relu{}_{}'.format(num_pool, num_conv)
+            name = "relu{}_{}".format(num_pool, num_conv)
             # The in-place version doesn't play very nicely with the ContentLoss
             # and StyleLoss we insert below. So we replace with out-of-place
             # ones here.
@@ -100,19 +116,23 @@ def get_style_model_and_losses(cnn, normalization_mean, normalization_std,
         elif isinstance(layer, nn.MaxPool2d):
             num_pool += 1
             num_conv = 0
-            name = 'pool_{}'.format(num_pool)
-            layer = nn.AvgPool2d(kernel_size=layer.kernel_size,
-                                 stride=layer.stride,
-                                 padding=layer.padding)
-            
+            name = "pool_{}".format(num_pool)
+            layer = nn.AvgPool2d(
+                kernel_size=layer.kernel_size,
+                stride=layer.stride,
+                padding=layer.padding,
+            )
+
             style_masks = [layer(mask) for mask in style_masks]
             content_masks = [layer(mask) for mask in content_masks]
-            
+
         elif isinstance(layer, nn.BatchNorm2d):
-            name = 'bn{}_{}'.format(num_pool, num_conv)
+            name = "bn{}_{}".format(num_pool, num_conv)
 
         else:
-            raise RuntimeError('Unrecognized layer: {}'.format(layer.__class__.__name__))
+            raise RuntimeError(
+                "Unrecognized layer: {}".format(layer.__class__.__name__)
+            )
 
         model.add_module(name, layer)
 
@@ -124,7 +144,7 @@ def get_style_model_and_losses(cnn, normalization_mean, normalization_std,
 
         if name in style_layers:
             target_feature = model(style_img).detach()
-            
+
             style_loss = AugmentedStyleLoss(target_feature, style_masks, content_masks)
             model.add_module("style_loss_{}".format(num_pool), style_loss)
             style_losses.append(style_loss)
@@ -134,7 +154,7 @@ def get_style_model_and_losses(cnn, normalization_mean, normalization_std,
         if isinstance(model[i], (ContentLoss, StyleLoss, AugmentedStyleLoss)):
             break
 
-    model = model[:(i + 1)]
+    model = model[: (i + 1)]
 
     return model, style_losses, content_losses
 
@@ -144,18 +164,33 @@ def get_input_optimizer(input_img):
     return optimizer
 
 
-def run_style_transfer(cnn, normalization_mean, normalization_std,
-                       content_img, style_img, input_img,
-                       style_masks, content_masks,
-                       reg=False, num_steps=300,
-                       style_weight=100000, content_weight=1000, reg_weight=1000):
+def run_style_transfer(
+    cnn,
+    normalization_mean,
+    normalization_std,
+    content_img,
+    style_img,
+    input_img,
+    style_masks,
+    content_masks,
+    reg=False,
+    num_steps=300,
+    style_weight=100000,
+    content_weight=1000,
+    reg_weight=1000,
+):
     """
     Run the style transfer.
     """
     model, style_losses, content_losses = get_style_model_and_losses(
-        cnn, normalization_mean, normalization_std,
-        style_img, content_img,
-        style_masks, content_masks)
+        cnn,
+        normalization_mean,
+        normalization_std,
+        style_img,
+        content_img,
+        style_masks,
+        content_masks,
+    )
     optimizer = get_input_optimizer(input_img)
 
     if reg:
@@ -167,8 +202,8 @@ def run_style_transfer(cnn, normalization_mean, normalization_std,
             loss = (grad * im.reshape(-1, 3)).sum()
             return loss, 2. * grad.reshape(*im.shape)
 
-    run = [0]
-    while run[0] <= num_steps:
+    step = 0
+    while step <= num_steps:
 
         def closure():
             """
@@ -182,7 +217,7 @@ def run_style_transfer(cnn, normalization_mean, normalization_std,
             get_loss = lambda x: x.loss
             style_score = style_weight * sum(map(get_loss, style_losses))
             content_score = content_weight * sum(map(get_loss, content_losses))
-            
+
             loss = style_score + content_score
             loss.backward()
 
@@ -194,12 +229,16 @@ def run_style_transfer(cnn, normalization_mean, normalization_std,
 
                 loss += reg_weight * reg_loss
 
+            nonlocal step
+            step += 1
 
-            run[0] += 1
-            if run[0] % 10 == 0:
-                print("run {:>4d}:".format(run[0]),
-                      'S: {:.3f} C: {:.3f} R:{:.3f}'.format(
-                        style_score.item(), content_score.item(), reg_loss if reg else 0))
+            if step % 50 == 0:
+                print(
+                    "step {:>4d}:".format(step),
+                    "S: {:.3f} C: {:.3f} R:{:.3f}".format(
+                        style_score.item(), content_score.item(), reg_loss if reg else 0
+                    ),
+                )
 
             return loss
 
