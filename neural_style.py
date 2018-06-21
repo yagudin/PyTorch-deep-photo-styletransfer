@@ -69,23 +69,17 @@ class AugmentedStyleLoss(nn.Module):
         return input
 
 
-content_layers_default = ["conv4_2"]
-style_layers_default = ["conv1_1", "conv2_1", "conv3_1", "conv4_1", "conv5_1"]
-
-
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-
 def get_style_model_and_losses(
     cnn,
     normalization_mean,
     normalization_std,
+    style_layers,
+    content_layers,
     style_img,
     content_img,
     style_masks,
     content_masks,
-    content_layers=content_layers_default,
-    style_layers=style_layers_default,
+    device,
 ):
     """
     Assumptions:
@@ -168,11 +162,14 @@ def run_style_transfer(
     cnn,
     normalization_mean,
     normalization_std,
-    content_img,
+    style_layers,
+    content_layers,
     style_img,
+    content_img,
     input_img,
     style_masks,
     content_masks,
+    device,
     reg=False,
     num_steps=300,
     style_weight=100000,
@@ -186,10 +183,13 @@ def run_style_transfer(
         cnn,
         normalization_mean,
         normalization_std,
+        style_layers,
+        content_layers,
         style_img,
         content_img,
         style_masks,
         content_masks,
+        device,
     )
     optimizer = get_input_optimizer(input_img)
 
