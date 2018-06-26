@@ -6,4 +6,5 @@ PyTorch implementation of "Deep Photo Style Transfer": https://arxiv.org/abs/170
 ## Other Implementations
 
 [Lua + Matlab](https://github.com/luanfujun/deep-photo-styletransfer)
+
 [Tensorflow](https://github.com/LouieYang/deep-photo-styletransfer-tf)
